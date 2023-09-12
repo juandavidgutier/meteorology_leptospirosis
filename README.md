@@ -1,14 +1,10 @@
 # Project Title
 
-Meteorological variables and incidence of leptospirosis in Colombia: A random-effect meta-analysis approach
+Pooled lagged effect of runoff on leptospirosis cases in Colombia
 
 ## Description
 
-Code shared to reproduce the results of the paper "Meteorological variables and incidence of leptospirosis in Colombia: A random-effect meta-analysis approach". 
-
-## Dependencies
-
-None
+Code shared to reproduce the results of the paper "Pooled lagged effect of runoff on leptospirosis cases in Colombia."
 
 
 ## Author
