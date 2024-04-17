@@ -8,13 +8,15 @@ library(tidyr)
 
 
 #implied Conditional Independencies
-url_path_leptos = "https://raw.githubusercontent.com/juandavidgutier/meteorology_leptospirosis/master/data_leptos.csv"
-dataset <- read.csv(url_path_leptos)
+
+dataset <- read.csv("D:/clases/UDES/articulo leptospirosis/dlnm/nuevo_articulo/script/data_leptos_new.csv", sep=",")
 
 dataset <- select(dataset, Cases, Runoff, SST12, SST3, SST34, SST4, ESOI, SOI, NATL, SATL, TROP, Year, Month)
 dataset <- dataset[complete.cases(dataset), ] 
 str(dataset)
 
+#descriptive analysis
+#ggpairs(dataset)
 
 #DAG 
 dag <- dagitty('dag {
@@ -150,7 +152,7 @@ any(eigen(myCov)$values < 0)
 
 ## Independencias condicionales
 impliedConditionalIndependencies(dag, max.results=3)
-corr <- lavCor(dataset)
+corr <- lavCor(dataset, group=dataset$Code.DANE)
 
 summary(corr)
 

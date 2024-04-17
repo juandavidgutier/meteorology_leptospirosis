@@ -1,7 +1,7 @@
 library(dlnm) ; library(mvmeta) ; library(splines) ; library(dplyr); library(ggplot2); library(RCurl)
 
 # LOAD THE DATASET
-url_path_leptos = "https://raw.githubusercontent.com/juandavidgutier/meteorology_leptospirosis/master/data_leptos.csv.csv"
+url_path_leptos = "https://raw.githubusercontent.com/juandavidgutier/meteorology_leptospirosis/master/data_leptos.csv"
 muni_Col <- read.csv(url_path_leptos)
 dim(muni_Col)
 head(muni_Col)
@@ -16,19 +16,6 @@ muni_Col$SOI <- dplyr::ntile(muni_Col$SOI, 3)
 muni_Col$NATL <- dplyr::ntile(muni_Col$NATL, 3) 
 muni_Col$SATL <- dplyr::ntile(muni_Col$SATL, 3) 
 muni_Col$TROP <- dplyr::ntile(muni_Col$TROP, 3)
-
-#runoff in g/m2
-muni_Col$Runoff <- as.numeric(muni_Col$Runoff)
-
-
-# Fig. 2
-ts_20muni <- muni_Col %>%
-        group_by(period) %>%
-        summarise(total_cases = sum(Cases))
-
-Cases <- ts(ts_20muni$total_cases, start = c(2007,1), frequency = 12)
-plot(Cases)
-
 
 # REGIONS
 regions <- as.character(unique(muni_Col$municipality)) 
@@ -58,14 +45,14 @@ lag <- c(0,1)
 #FIRST STAGE
 bound <- colMeans(ranges)
 
-argvar <- list(fun="poly", degree=2, cen=0.01) 
+argvar <- list(fun="poly", degree=2, cen=0.01) #df=3
 arglag <- list(fun="ns", df=1, intercept=FALSE)
 
 # ALTERNATIVE MODELS
 # - IDENTICAL BASIS FOR PREDICTOR SPACE BUT DIFFERENT LAG SPACE
-argvar2 <- list(fun="ns", df=2, cen=0.01) 
+argvar2 <- list(fun="ns", df=2, cen=0.01) #df=3
 arglag2 <- list(fun="poly", degree=1,intercept=FALSE)
-argvar3 <- list(fun="bs", df=2, cen=0.01) 
+argvar3 <- list(fun="bs", df=2, cen=0.01) #df=3
 arglag3 <- list(fun="poly", degree=1, intercept=FALSE)
 
 # BUILT OBJECTS WHERE RESULTS WILL BE STORED
@@ -148,7 +135,7 @@ sum(qaic) ; sum(qaic2) ; sum(qaic3)
 # PERFORM MULTIVARIATE META-ANALYSIS
 
 # SELECT THE ESTIMATION METHOD
-method <- "reml" # PLEASE, CHANGE IT TO "ml" and "mm" TO DEVELOP SENSITIVITY TEST
+method <- "mm" #"mm"
 
 # OVERALL CUMULATIVE SUMMARY FOR THE MAIN MODEL
 mvall <- mvmeta(yall2~1,Sall2,method=method)
@@ -174,7 +161,7 @@ cpall <- crosspred(bvar,coef=coef(mvall),vcov=vcov(mvall), cen=0.01,
 
 # OVERALL CUMULATIVE SUMMARY ASSOCIATION
 
-# Fig 3A
+# Supplementary figure 3A
 Runoff <- as.data.frame(cpall$predvar)
 best_model <- as.data.frame(cpall$allRRfit)
 best_model_h <- as.data.frame(cpall$allRRhigh)
@@ -186,7 +173,7 @@ data_runoff_model <- as.data.frame(cbind(Runoff, best_model, best_model_h, best_
 names <- c("Runoff", "best_model", "best_model_h", "best_model_l")
 colnames(data_runoff_model) <-  names
 
-f3A = ggplot(data_runoff_model) +
+sf3A = ggplot(data_runoff_model) +
   geom_ribbon(aes(x=Runoff,
                   ymin= best_model_l,  
                   ymax= best_model_h), 
@@ -199,18 +186,18 @@ f3A = ggplot(data_runoff_model) +
   geom_vline(aes(xintercept=Runoff_tiles[1]), color="dark orange", linetype="dashed") +
   geom_vline(aes(xintercept=Runoff_tiles[2]), color="red", linetype="dashed") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("A") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("A") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f3A)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf3A)
 
 
 # Q TEST AND I-SQUARE
-
+# I-SQUARE > 75 SIGNIFICA ALTA HETEROGENEIDAD Y NO DEBERIA HABERSE HECHO EL META-ANALISIS, EN ESTE CASO QUE I-SQUARE=35.3 ESTA BIEN
 (qall <- qtest(mvall))
 round(((qall$Q-qall$df)/qall$Q)[1]*100,1)
 
@@ -230,6 +217,8 @@ MPI <- unique(muni_Col$MPI)
 (mvallmpi <- update(mvall,.~MPI))
 summary(mvallmpi)
 
+#RR for Runoff and MULTIDIMENSIONAL POVERTY INDEX for each city
+#exp(mvallmpi[["model"]])
 
 # PREDICTION FROM META-REGRESSION
 val <- round(quantile(MPI,c(25,75)/100),1)
@@ -273,15 +262,15 @@ ftab <- function(model,mref=NULL) { ## where, m <- length(datalist)
   }
 }
 
-mv <- mvmeta(yall, Sall, method = "reml") ## NO META-PREDICTOR
-mvmpi <- mvmeta(yall ~ MPI, Sall, method = "reml", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
+mv <- mvmeta(yall, Sall, method = "mm") ## NO META-PREDICTOR
+mvmpi <- mvmeta(yall ~ MPI, Sall, method = "mm", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
 
 ## FILL VALUE IN THE TABLE CREATED
 tab[1,] <- ftab(mv)
 tab[2,] <- ftab(mvmpi, mv) ## THIS WILL AUTOMATICALLY ADD WALD-TEST STATISTIC, DEGREE OF FREEDOM, AND P-VALUE INTO THE TABLE
 print(tab)
 
-#Fig 4A 
+# Supplementary figure 4A
 Runoff <- as.data.frame(cpallmpiat75$predvar)
 at75 <- as.data.frame(cpallmpiat75$allRRfit)
 at75_h <- as.data.frame(cpallmpiat75$allRRhigh)
@@ -293,7 +282,7 @@ data_runoff <- as.data.frame(cbind(Runoff, at75, at75_h, at75_l, at25, at25_h, a
 names <- c("Runoff", "at75", "at75_h", "at75_l", "at25", "at25_h", "at25_l")
 colnames(data_runoff) <-  names
 
-f4A = ggplot(data_runoff) +
+sf4A = ggplot(data_runoff) +
   geom_ribbon(aes(x=Runoff,
                   ymin= at75 - at75_l, #ymin= best_model - conf_int[1],
                   ymax= at75 + at75_h), 
@@ -310,14 +299,14 @@ f4A = ggplot(data_runoff) +
             color='blue') + #percentile 10th of MPI
   geom_hline(aes(yintercept=1), color="black") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("A") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("A") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f4A)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf4A)
 
 
 
@@ -328,14 +317,14 @@ lag <- c(0,2)
 #FIRST STAGE
 bound <- colMeans(ranges)
 
-argvar <- list(fun="poly", degree=2, cen=0.01) 
+argvar <- list(fun="poly", degree=2, cen=0.01) #df=3
 arglag <- list(fun="ns", df=2, intercept=FALSE)
 
 # ALTERNATIVE MODELS
 # - IDENTICAL BASIS FOR PREDICTOR SPACE BUT DIFFERENT LAG SPACE
-argvar2 <- list(fun="ns", df=3, cen=0.01) 
+argvar2 <- list(fun="ns", df=3, cen=0.01) #df=3
 arglag2 <- list(fun="poly", degree=2,intercept=FALSE)
-argvar3 <- list(fun="bs", df=3, cen=0.01) 
+argvar3 <- list(fun="bs", df=3, cen=0.01) #df=3
 arglag3 <- list(fun="poly", degree=2, intercept=FALSE)
 
 # BUILT OBJECTS WHERE RESULTS WILL BE STORED
@@ -418,7 +407,7 @@ sum(qaic) ; sum(qaic2) ; sum(qaic3)
 # PERFORM MULTIVARIATE META-ANALYSIS
 
 # SELECT THE ESTIMATION METHOD
-method <- "reml" ## PLEASE, CHANGE IT TO "ml" and "mm" TO DEVELOP SENSITIVITY TEST
+method <- "mm" #"mm"
 
 # OVERALL CUMULATIVE SUMMARY FOR THE MAIN MODEL
 mvall <- mvmeta(yall2~1,Sall2,method=method)
@@ -444,7 +433,7 @@ cpall <- crosspred(bvar,coef=coef(mvall),vcov=vcov(mvall), cen=0.01,
 
 # OVERALL CUMULATIVE SUMMARY ASSOCIATION
 
-# Fig 3B
+# Supplementary figure 3B
 Runoff <- as.data.frame(cpall$predvar)
 best_model <- as.data.frame(cpall$allRRfit)
 best_model_h <- as.data.frame(cpall$allRRhigh)
@@ -456,7 +445,7 @@ data_runoff_model <- as.data.frame(cbind(Runoff, best_model, best_model_h, best_
 names <- c("Runoff", "best_model", "best_model_h", "best_model_l")
 colnames(data_runoff_model) <-  names
 
-f3B = ggplot(data_runoff_model) +
+sf3B = ggplot(data_runoff_model) +
   geom_ribbon(aes(x=Runoff,
                   ymin= best_model_l, 
                   ymax= best_model_h), 
@@ -469,19 +458,19 @@ f3B = ggplot(data_runoff_model) +
   geom_vline(aes(xintercept=Runoff_tiles[1]), color="dark orange", linetype="dashed") +
   geom_vline(aes(xintercept=Runoff_tiles[2]), color="red", linetype="dashed") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("B") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("B") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f3B)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf3B)
 
 
 
 # Q TEST AND I-SQUARE
-
+# I-SQUARE > 75 SIGNIFICA ALTA HETEROGENEIDAD Y NO DEBERIA HABERSE HECHO EL META-ANALISIS, EN ESTE CASO QUE I-SQUARE=35.3 ESTA BIEN
 (qall <- qtest(mvall))
 round(((qall$Q-qall$df)/qall$Q)[1]*100,1)
 
@@ -501,8 +490,8 @@ MPI <- unique(muni_Col$MPI)
 (mvallmpi <- update(mvall,.~MPI))
 summary(mvallmpi)
 
-
-
+#RR for Runoff and MULTIDIMENSIONAL POVERTY INDEX for each city
+#exp(mvallmpi[["model"]])
 
 # PREDICTION FROM META-REGRESSION
 val <- round(quantile(MPI,c(25,75)/100),1)
@@ -546,15 +535,15 @@ ftab <- function(model,mref=NULL) { ## where, m <- length(datalist)
   }
 }
 
-mv <- mvmeta(yall2, Sall2, method = "reml") ## NO META-PREDICTOR
-mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "reml", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
+mv <- mvmeta(yall2, Sall2, method = "mm") ## NO META-PREDICTOR
+mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "mm", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
 
 ## FILL VALUE IN THE TABLE CREATED
 tab[1,] <- ftab(mv)
 tab[2,] <- ftab(mvmpi, mv) ## THIS WILL AUTOMATICALLY ADD WALD-TEST STATISTIC, DEGREE OF FREEDOM, AND P-VALUE INTO THE TABLE
 print(tab)
 
-#Fig 4B 
+# Supplementary figure 4B
 Runoff <- as.data.frame(cpallmpiat75$predvar)
 at75 <- as.data.frame(cpallmpiat75$allRRfit)
 at75_h <- as.data.frame(cpallmpiat75$allRRhigh)
@@ -566,7 +555,7 @@ data_runoff <- as.data.frame(cbind(Runoff, at75, at75_h, at75_l, at25, at25_h, a
 names <- c("Runoff", "at75", "at75_h", "at75_l", "at25", "at25_h", "at25_l")
 colnames(data_runoff) <-  names
 
-f4B = ggplot(data_runoff) +
+sf4B = ggplot(data_runoff) +
   geom_ribbon(aes(x=Runoff,
                   ymin= at75 - at75_l, #ymin= best_model - conf_int[1],
                   ymax= at75 + at75_h), 
@@ -583,14 +572,15 @@ f4B = ggplot(data_runoff) +
             color='blue') + #percentile 10th of MPI
   geom_hline(aes(yintercept=1), color="black") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("B") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("B") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f4B)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR")  
+print(sf4B)
+
 
 
 
@@ -602,14 +592,14 @@ lag <- c(0,3)
 #FIRST STAGE
 bound <- colMeans(ranges)
 
-argvar <- list(fun="poly", degree=2, cen=0.01) 
+argvar <- list(fun="poly", degree=2, cen=0.01) #df=3
 arglag <- list(fun="ns", df=2, intercept=FALSE)
 
 # ALTERNATIVE MODELS
 # - IDENTICAL BASIS FOR PREDICTOR SPACE BUT DIFFERENT LAG SPACE
-argvar2 <- list(fun="ns", df=3, cen=0.01) 
+argvar2 <- list(fun="ns", df=3, cen=0.01) #df=3
 arglag2 <- list(fun="poly", degree=2,intercept=FALSE)
-argvar3 <- list(fun="bs", df=3, cen=0.01) 
+argvar3 <- list(fun="bs", df=3, cen=0.01) #df=3
 arglag3 <- list(fun="poly", degree=2, intercept=FALSE)
 
 # BUILT OBJECTS WHERE RESULTS WILL BE STORED
@@ -693,7 +683,7 @@ sum(qaic) ; sum(qaic2) ; sum(qaic3)
 # PERFORM MULTIVARIATE META-ANALYSIS
 
 # SELECT THE ESTIMATION METHOD
-method <- "reml" # PLEASE, CHANGE IT TO "ml" and "mm" TO DEVELOP SENSITIVITY TEST
+method <- "mm" #"mm"
 
 # OVERALL CUMULATIVE SUMMARY FOR THE MAIN MODEL
 mvall <- mvmeta(yall2~1,Sall2,method=method)
@@ -719,7 +709,7 @@ cpall <- crosspred(bvar,coef=coef(mvall),vcov=vcov(mvall), cen=0.01,
 
 # OVERALL CUMULATIVE SUMMARY ASSOCIATION
 
-# Fig 3C
+# Supplementary figure 3C
 Runoff <- as.data.frame(cpall$predvar)
 best_model <- as.data.frame(cpall$allRRfit)
 best_model_h <- as.data.frame(cpall$allRRhigh)
@@ -731,7 +721,7 @@ data_runoff_model <- as.data.frame(cbind(Runoff, best_model, best_model_h, best_
 names <- c("Runoff", "best_model", "best_model_h", "best_model_l")
 colnames(data_runoff_model) <-  names
 
-f3C = ggplot(data_runoff_model) +
+sf3C = ggplot(data_runoff_model) +
   geom_ribbon(aes(x=Runoff,
                   ymin= best_model_l, 
                   ymax= best_model_h), 
@@ -744,19 +734,19 @@ f3C = ggplot(data_runoff_model) +
   geom_vline(aes(xintercept=Runoff_tiles[1]), color="dark orange", linetype="dashed") +
   geom_vline(aes(xintercept=Runoff_tiles[2]), color="red", linetype="dashed") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("C") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("C") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f3C)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR")  
+print(sf3C)
 
 
 
 # Q TEST AND I-SQUARE
-
+# I-SQUARE > 75 SIGNIFICA ALTA HETEROGENEIDAD Y NO DEBERIA HABERSE HECHO EL META-ANALISIS, EN ESTE CASO QUE I-SQUARE=35.3 ESTA BIEN
 (qall <- qtest(mvall))
 round(((qall$Q-qall$df)/qall$Q)[1]*100,1)
 
@@ -776,8 +766,8 @@ MPI <- unique(muni_Col$MPI)
 (mvallmpi <- update(mvall,.~MPI))
 summary(mvallmpi)
 
-
-
+#RR for Runoff and MULTIDIMENSIONAL POVERTY INDEX for each city
+#exp(mvallmpi[["model"]])
 
 # PREDICTION FROM META-REGRESSION
 val <- round(quantile(MPI,c(25,75)/100),1)
@@ -821,15 +811,15 @@ ftab <- function(model,mref=NULL) { ## where, m <- length(datalist)
   }
 }
 
-mv <- mvmeta(yall2, Sall2, method = "reml") ## NO META-PREDICTOR
-mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "reml", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
+mv <- mvmeta(yall2, Sall2, method = "mm") ## NO META-PREDICTOR
+mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "mm", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
 
 ## FILL VALUE IN THE TABLE CREATED
 tab[1,] <- ftab(mv)
 tab[2,] <- ftab(mvmpi, mv) ## THIS WILL AUTOMATICALLY ADD WALD-TEST STATISTIC, DEGREE OF FREEDOM, AND P-VALUE INTO THE TABLE
 print(tab)
 
-#Fig 4C 
+# Supplementary figure 4C
 Runoff <- as.data.frame(cpallmpiat75$predvar)
 at75 <- as.data.frame(cpallmpiat75$allRRfit)
 at75_h <- as.data.frame(cpallmpiat75$allRRhigh)
@@ -841,7 +831,7 @@ data_runoff <- as.data.frame(cbind(Runoff, at75, at75_h, at75_l, at25, at25_h, a
 names <- c("Runoff", "at75", "at75_h", "at75_l", "at25", "at25_h", "at25_l")
 colnames(data_runoff) <-  names
 
-f4C = ggplot(data_runoff) +
+sf4C = ggplot(data_runoff) +
   geom_ribbon(aes(x=Runoff,
                   ymin= at75 - at75_l, #ymin= best_model - conf_int[1],
                   ymax= at75 + at75_h), 
@@ -858,14 +848,16 @@ f4C = ggplot(data_runoff) +
             color='blue') + #percentile 10th of MPI
   geom_hline(aes(yintercept=1), color="black") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("C") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("C") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f4C)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf4C)
+
+
 
 
 
@@ -877,14 +869,14 @@ lag <- c(0,4)
 
 #FIRST STAGE
 # MAIN MODEL
-argvar <- list(fun="poly", degree=2, cen=0.01) 
+argvar <- list(fun="poly", degree=2, cen=0.01) #df=3
 arglag <- list(fun="ns", df=2, intercept=FALSE)
 
 # ALTERNATIVE MODELS
 # - IDENTICAL BASIS FOR PREDICTOR SPACE BUT DIFFERENT LAG SPACE
-argvar2 <- list(fun="ns", df=3, cen=0.01) 
+argvar2 <- list(fun="ns", df=3, cen=0.01) #df=3
 arglag2 <- list(fun="poly", degree=2,intercept=FALSE)
-argvar3 <- list(fun="bs", df=3, cen=0.01) 
+argvar3 <- list(fun="bs", df=3, cen=0.01) #df=3
 arglag3 <- list(fun="poly", degree=2, intercept=FALSE)
 
 # BUILT OBJECTS WHERE RESULTS WILL BE STORED
@@ -970,8 +962,7 @@ sum(qaic) ; sum(qaic2) ; sum(qaic3)
 # PERFORM MULTIVARIATE META-ANALYSIS
 
 # SELECT THE ESTIMATION METHOD
-method <- "reml" # PLEASE, CHANGE IT TO "ml" and "mm" TO DEVELOP SENSITIVITY TEST
-
+method <- "mm" #"mm"
 
 # OVERALL CUMULATIVE SUMMARY FOR THE MAIN MODEL
 mvall <- mvmeta(yall2~1,Sall2,method=method)
@@ -1003,7 +994,7 @@ cpall <- crosspred(bvar,coef=coef(mvall),vcov=vcov(mvall), cen=0.01,
 
 # OVERALL CUMULATIVE SUMMARY ASSOCIATION
 
-# Fig 3D
+# Supplementary figure 3D
 Runoff <- as.data.frame(cpall$predvar)
 best_model <- as.data.frame(cpall$allRRfit)
 best_model_h <- as.data.frame(cpall$allRRhigh)
@@ -1015,7 +1006,7 @@ data_runoff_model <- as.data.frame(cbind(Runoff, best_model, best_model_h, best_
 names <- c("Runoff", "best_model", "best_model_h", "best_model_l")
 colnames(data_runoff_model) <-  names
 
-f3D = ggplot(data_runoff_model) +
+sf3D = ggplot(data_runoff_model) +
   geom_ribbon(aes(x=Runoff,
                   ymin= best_model_l, 
                   ymax= best_model_h), 
@@ -1028,18 +1019,18 @@ f3D = ggplot(data_runoff_model) +
   geom_vline(aes(xintercept=Runoff_tiles[1]), color="dark orange", linetype="dashed") +
   geom_vline(aes(xintercept=Runoff_tiles[2]), color="red", linetype="dashed") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("D") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("D") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f3D)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf3D)
 
 
 # Q TEST AND I-SQUARE
-
+# I-SQUARE > 75 SIGNIFICA ALTA HETEROGENEIDAD Y NO DEBERIA HABERSE HECHO EL META-ANALISIS, EN ESTE CASO QUE I-SQUARE=35.3 ESTA BIEN
 
 (qall <- qtest(mvall))
 round(((qall$Q-qall$df)/qall$Q)[1]*100,1)
@@ -1100,8 +1091,8 @@ ftab <- function(model,mref=NULL) { ## where, m <- length(datalist)
   }
 }
 
-mv <- mvmeta(yall2, Sall2, method = "reml") ## NO META-PREDICTOR
-mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "reml", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
+mv <- mvmeta(yall2, Sall2, method = "mm") ## NO META-PREDICTOR
+mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "mm", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
 
 ## FILL VALUE IN THE TABLE CREATED
 tab[1,] <- ftab(mv)
@@ -1109,7 +1100,7 @@ tab[2,] <- ftab(mvmpi, mv) ## THIS WILL AUTOMATICALLY ADD WALD-TEST STATISTIC, D
 print(tab)
 
 
-#Fig 4D 
+# Supplementary figure 4D
 Runoff <- as.data.frame(cpallmpiat75$predvar)
 at75 <- as.data.frame(cpallmpiat75$allRRfit)
 at75_h <- as.data.frame(cpallmpiat75$allRRhigh)
@@ -1121,7 +1112,7 @@ data_runoff <- as.data.frame(cbind(Runoff, at75, at75_h, at75_l, at25, at25_h, a
 names <- c("Runoff", "at75", "at75_h", "at75_l", "at25", "at25_h", "at25_l")
 colnames(data_runoff) <-  names
 
-f4D = ggplot(data_runoff) +
+sf4D = ggplot(data_runoff) +
   geom_ribbon(aes(x=Runoff,
                   ymin= at75 - at75_l, #ymin= best_model - conf_int[1],
                   ymax= at75 + at75_h), 
@@ -1138,14 +1129,14 @@ f4D = ggplot(data_runoff) +
             color='blue') + #percentile 10th of MPI
   geom_hline(aes(yintercept=1), color="black") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("D") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("D") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f4D)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf4D)
 
 
 
@@ -1156,14 +1147,14 @@ lag <- c(0,5)
 
 #FIRST STAGE
 # MAIN MODEL
-argvar <- list(fun="poly", degree=2, cen=0.01) 
+argvar <- list(fun="poly", degree=2, cen=0.01) #df=3
 arglag <- list(fun="ns", df=2, intercept=FALSE)
 
 # ALTERNATIVE MODELS
 # - IDENTICAL BASIS FOR PREDICTOR SPACE BUT DIFFERENT LAG SPACE
-argvar2 <- list(fun="ns", df=3, cen=0.01) 
+argvar2 <- list(fun="ns", df=3, cen=0.01) #df=3
 arglag2 <- list(fun="poly", degree=2,intercept=FALSE)
-argvar3 <- list(fun="bs", df=3, cen=0.01) 
+argvar3 <- list(fun="bs", df=3, cen=0.01) #df=3
 arglag3 <- list(fun="poly", degree=2, intercept=FALSE)
 
 # BUILT OBJECTS WHERE RESULTS WILL BE STORED
@@ -1249,7 +1240,7 @@ sum(qaic) ; sum(qaic2) ; sum(qaic3)
 # PERFORM MULTIVARIATE META-ANALYSIS
 
 # SELECT THE ESTIMATION METHOD
-method <- "reml" ## PLEASE, CHANGE IT TO "ml" and "mm" TO DEVELOP SENSITIVITY TEST
+method <- "mm" #"mm"
 
 # OVERALL CUMULATIVE SUMMARY FOR THE MAIN MODEL
 mvall <- mvmeta(yall2~1,Sall2,method=method)
@@ -1281,7 +1272,7 @@ cpall <- crosspred(bvar,coef=coef(mvall),vcov=vcov(mvall), cen=0.01,
 
 # OVERALL CUMULATIVE SUMMARY ASSOCIATION
 
-# Fig 3E
+# Supplementary figure 3E
 Runoff <- as.data.frame(cpall$predvar)
 best_model <- as.data.frame(cpall$allRRfit)
 best_model_h <- as.data.frame(cpall$allRRhigh)
@@ -1293,7 +1284,7 @@ data_runoff_model <- as.data.frame(cbind(Runoff, best_model, best_model_h, best_
 names <- c("Runoff", "best_model", "best_model_h", "best_model_l")
 colnames(data_runoff_model) <-  names
 
-f3E = ggplot(data_runoff_model) +
+sf3E = ggplot(data_runoff_model) +
   geom_ribbon(aes(x=Runoff,
                   ymin= best_model_l, 
                   ymax= best_model_h), 
@@ -1306,18 +1297,18 @@ f3E = ggplot(data_runoff_model) +
   geom_vline(aes(xintercept=Runoff_tiles[1]), color="dark orange", linetype="dashed") +
   geom_vline(aes(xintercept=Runoff_tiles[2]), color="red", linetype="dashed") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("E") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("E") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f3E)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf3E)
 
 
 # Q TEST AND I-SQUARE
-
+# I-SQUARE > 75 SIGNIFICA ALTA HETEROGENEIDAD Y NO DEBERIA HABERSE HECHO EL META-ANALISIS, EN ESTE CASO QUE I-SQUARE=35.3 ESTA BIEN
 
 (qall <- qtest(mvall))
 round(((qall$Q-qall$df)/qall$Q)[1]*100,1)
@@ -1378,8 +1369,8 @@ ftab <- function(model,mref=NULL) { ## where, m <- length(datalist)
   }
 }
 
-mv <- mvmeta(yall2, Sall2, method = "reml") ## NO META-PREDICTOR
-mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "reml", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
+mv <- mvmeta(yall2, Sall2, method = "mm") ## NO META-PREDICTOR
+mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "mm", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
 
 ## FILL VALUE IN THE TABLE CREATED
 tab[1,] <- ftab(mv)
@@ -1387,7 +1378,7 @@ tab[2,] <- ftab(mvmpi, mv) ## THIS WILL AUTOMATICALLY ADD WALD-TEST STATISTIC, D
 print(tab)
 
 
-#Fig 4E 
+# Supplementary figure 4E
 Runoff <- as.data.frame(cpallmpiat75$predvar)
 at75 <- as.data.frame(cpallmpiat75$allRRfit)
 at75_h <- as.data.frame(cpallmpiat75$allRRhigh)
@@ -1399,7 +1390,7 @@ data_runoff <- as.data.frame(cbind(Runoff, at75, at75_h, at75_l, at25, at25_h, a
 names <- c("Runoff", "at75", "at75_h", "at75_l", "at25", "at25_h", "at25_l")
 colnames(data_runoff) <-  names
 
-f4E = ggplot(data_runoff) +
+sf4E = ggplot(data_runoff) +
   geom_ribbon(aes(x=Runoff,
                   ymin= at75 - at75_l, #ymin= best_model - conf_int[1],
                   ymax= at75 + at75_h), 
@@ -1416,14 +1407,14 @@ f4E = ggplot(data_runoff) +
             color='blue') + #percentile 10th of MPI
   geom_hline(aes(yintercept=1), color="black") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("E") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("E") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5)) 
-print(f4E)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf4E)
 
 
 
@@ -1433,14 +1424,14 @@ print(f4E)
 lag <- c(0,6)
 
 
-argvar <- list(fun="poly", degree=2, cen=0.01) 
+argvar <- list(fun="poly", degree=2, cen=0.01) #df=3
 arglag <- list(fun="ns", df=2, intercept=FALSE)
 
 # ALTERNATIVE MODELS
 # - IDENTICAL BASIS FOR PREDICTOR SPACE BUT DIFFERENT LAG SPACE
-argvar2 <- list(fun="ns", df=3, cen=0.01) 
+argvar2 <- list(fun="ns", df=3, cen=0.01) #df=3
 arglag2 <- list(fun="poly", degree=2,intercept=FALSE)
-argvar3 <- list(fun="bs", df=3, cen=0.01) 
+argvar3 <- list(fun="bs", df=3, cen=0.01) #df=3
 arglag3 <- list(fun="poly", degree=2, intercept=FALSE)
 
 # BUILT OBJECTS WHERE RESULTS WILL BE STORED
@@ -1526,7 +1517,7 @@ sum(qaic) ; sum(qaic2) ; sum(qaic3)
 # PERFORM MULTIVARIATE META-ANALYSIS
 
 # SELECT THE ESTIMATION METHOD
-method <- "reml" ## PLEASE, CHANGE IT TO "ml" and "mm" TO DEVELOP SENSITIVITY TEST
+method <- "mm" #"mm"
 
 # OVERALL CUMULATIVE SUMMARY FOR THE MAIN MODEL
 mvall <- mvmeta(yall2~1,Sall2,method=method)
@@ -1552,7 +1543,7 @@ cpall <- crosspred(bvar,coef=coef(mvall),vcov=vcov(mvall), cen=0.01,
 
 # OVERALL CUMULATIVE SUMMARY ASSOCIATION
 
-# Fig 3F
+# Supplementary figure 3F
 Runoff <- as.data.frame(cpall$predvar)
 best_model <- as.data.frame(cpall$allRRfit)
 best_model_h <- as.data.frame(cpall$allRRhigh)
@@ -1564,7 +1555,7 @@ data_runoff_model <- as.data.frame(cbind(Runoff, best_model, best_model_h, best_
 names <- c("Runoff", "best_model", "best_model_h", "best_model_l")
 colnames(data_runoff_model) <-  names
 
-f3F = ggplot(data_runoff_model) +
+sf3F = ggplot(data_runoff_model) +
   geom_ribbon(aes(x=Runoff,
                   ymin= best_model_l, 
                   ymax= best_model_h), 
@@ -1577,18 +1568,18 @@ f3F = ggplot(data_runoff_model) +
   geom_vline(aes(xintercept=Runoff_tiles[1]), color="dark orange", linetype="dashed") +
   geom_vline(aes(xintercept=Runoff_tiles[2]), color="red", linetype="dashed") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("F") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("F") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f3F)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf3F)
 
 
 # Q TEST AND I-SQUARE
-
+# I-SQUARE > 75 SIGNIFICA ALTA HETEROGENEIDAD Y NO DEBERIA HABERSE HECHO EL META-ANALISIS, EN ESTE CASO QUE I-SQUARE=35.3 ESTA BIEN
 (qall <- qtest(mvall))
 round(((qall$Q-qall$df)/qall$Q)[1]*100,1)
 
@@ -1607,8 +1598,8 @@ MPI <- unique(muni_Col$MPI)
 summary(mvallmpi)
 
 
-
-
+#RR for Runoff and MULTIDIMENSIONAL POVERTY INDEX for each city
+#exp(mvallmpi[["model"]])
 
 # PREDICTION FROM META-REGRESSION
 val <- round(quantile(MPI,c(25,75)/100),1)
@@ -1652,15 +1643,15 @@ ftab <- function(model,mref=NULL) { ## where, m <- length(datalist)
   }
 }
 
-mv <- mvmeta(yall2, Sall2, method = "reml") ## NO META-PREDICTOR
-mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "reml", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
+mv <- mvmeta(yall2, Sall2, method = "mm") ## NO META-PREDICTOR
+mvmpi <- mvmeta(yall2 ~ MPI, Sall2, method = "mm", ) ## INCLUSION OF MULTIDIMENTIONAL POVERTY INDEX AS META-PREDICTOR
 
 ## FILL VALUE IN THE TABLE CREATED
 tab[1,] <- ftab(mv)
 tab[2,] <- ftab(mvmpi, mv) ## THIS WILL AUTOMATICALLY ADD WALD-TEST STATISTIC, DEGREE OF FREEDOM, AND P-VALUE INTO THE TABLE
 print(tab)
 
-#Fig 4F 
+# Supplementary figure 4F
 Runoff <- as.data.frame(cpallmpiat75$predvar)
 at75 <- as.data.frame(cpallmpiat75$allRRfit)
 at75_h <- as.data.frame(cpallmpiat75$allRRhigh)
@@ -1672,7 +1663,7 @@ data_runoff <- as.data.frame(cbind(Runoff, at75, at75_h, at75_l, at25, at25_h, a
 names <- c("Runoff", "at75", "at75_h", "at75_l", "at25", "at25_h", "at25_l")
 colnames(data_runoff) <-  names
 
-f4F = ggplot(data_runoff) +
+sf4F = ggplot(data_runoff) +
   geom_ribbon(aes(x=Runoff,
                   ymin= at75 - at75_l, #ymin= best_model - conf_int[1],
                   ymax= at75 + at75_h), 
@@ -1689,14 +1680,14 @@ f4F = ggplot(data_runoff) +
             color='blue') + #percentile 10th of MPI
   geom_hline(aes(yintercept=1), color="black") +
   theme_bw() +
-  labs(x = "Runoff", y = "RR", size = 14) +
-  ggtitle("F") +
-  theme(axis.title.x = element_text(size = 14),
-        axis.title.y = element_text(size = 14),
+  ggtitle("F") +   # Set the title
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
         axis.text.x = element_text(size = 14),
         axis.text.y = element_text(size = 14),
-        plot.title = element_text(size = 20, hjust = 0.5))
-print(f4F)
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14)) +  # Adjust title size and alignment
+  labs(x="Runoff", y="RR") 
+print(sf4F)
 
 
 
