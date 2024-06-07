@@ -1,7 +1,7 @@
 library(dlnm) ; library(mvmeta) ; library(splines) ; library(dplyr); library(ggplot2); library(RCurl)
 
 # LOAD THE DATASET
-url_path_leptos = "https://raw.githubusercontent.com/juandavidgutier/meteorology_leptospirosis/master/data_leptos.csv.csv"
+url_path_leptos = "https://raw.githubusercontent.com/juandavidgutier/meteorology_leptospirosis/master/data_leptos.csv"
 muni_Col <- read.csv(url_path_leptos)
 dim(muni_Col)
 head(muni_Col)
