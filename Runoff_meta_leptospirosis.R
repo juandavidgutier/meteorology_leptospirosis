@@ -27,7 +27,7 @@ ts_20muni <- muni_Col %>%
         summarise(total_cases = sum(Cases))
 
 Cases <- ts(ts_20muni$total_cases, start = c(2007,1), frequency = 12)
-plot(Cases)
+plot(Cases, col="red")
 
 
 # REGIONS
